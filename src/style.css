@@ -1,0 +1,170 @@
+/* ===== 全局 ===== */
+body {
+  margin: 0;
+  background: #0b132b;
+  overflow: hidden;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+}
+
+/* ===== START 首页容器 ===== */
+/* 注意：此处不声明 opacity，避免 ID 特异度压过 .hidden 的 opacity:0 导致渐隐失效 */
+#start-screen {
+  position: fixed;
+  inset: 0;
+  transition: opacity 0.6s ease;
+}
+
+.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ===== 游戏标题 ===== */
+.game-title {
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(48px, 8vw, 88px);
+  color: #00e5ff;
+  text-shadow:
+    0 0 12px #00e5ff,
+    0 0 32px rgba(0, 229, 255, 0.6);
+  animation: breathe 2.4s ease-in-out infinite;
+  user-select: none;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+    text-shadow:
+      0 0 12px #00e5ff,
+      0 0 32px rgba(0, 229, 255, 0.6);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.04);
+    opacity: 0.92;
+    text-shadow:
+      0 0 18px #00e5ff,
+      0 0 48px rgba(0, 229, 255, 0.8);
+  }
+}
+
+/* ===== 主角（左下角，真实 3 帧序列帧，单元 256x347，源自 抠图素材/主角色_01-03） ===== */
+.hero {
+  position: absolute;
+  left: 6%;
+  bottom: 0;
+  width: 120px;
+  height: 163px;
+  background-image: url("/assets/hero.png");
+  background-repeat: no-repeat;
+  background-size: 360px 163px;
+  background-position: 0 0;
+  animation: hero-anim 0.9s steps(3) infinite;
+}
+
+@keyframes hero-anim {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -360px 0;
+  }
+}
+
+/* ===== 副角色（右下偏中，真实 3 帧序列帧，单元 285x336，源自 抠图素材/副角色_01-03） ===== */
+.guide {
+  position: absolute;
+  right: 22%;
+  bottom: 0;
+  width: 120px;
+  height: 141px;
+  background-image: url("/assets/guide.png");
+  background-repeat: no-repeat;
+  background-size: 360px 141px;
+  background-position: 0 0;
+  animation: guide-anim 1s steps(3) infinite;
+}
+
+@keyframes guide-anim {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -360px 0;
+  }
+}
+
+/* ===== 角色椭圆阴影 ===== */
+.hero::after,
+.guide::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 80px;
+  height: 12px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 70%);
+  border-radius: 50%;
+  z-index: -1;
+}
+
+/* ===== 对话框（毛玻璃） ===== */
+.dialog-box {
+  position: absolute;
+  right: 6%;
+  bottom: 180px;
+  max-width: 380px;
+  padding: 18px 24px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  color: #eaf6ff;
+  line-height: 1.7;
+  font-size: 16px;
+}
+
+/* 对话框指向副角色的三角箭头 */
+.dialog-box::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  right: 24px;
+  width: 16px;
+  height: 16px;
+  background: inherit;
+  border-right: 1px solid rgba(0, 229, 255, 0.35);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.35);
+  transform: rotate(45deg);
+  border-radius: 0 0 3px 0;
+}
+
+/* ===== 底部开始提示 ===== */
+.start-hint {
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ffffff;
+  font-size: 20px;
+  letter-spacing: 2px;
+  animation: blink 1.2s ease-in-out infinite;
+  user-select: none;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
