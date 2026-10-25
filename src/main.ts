@@ -26,6 +26,8 @@ import {
   drawLevel,
   isLevelWon,
   winElapsed,
+  isCinematic,
+  getTreasureGuide,
 } from './level';
 
 /** 关卡定义 */
@@ -238,6 +240,183 @@ function flashStartHint(text: string, duration = 2200): void {
   }, duration);
 }
 
+/* ===== 首页剧情：文字流 ===== */
+
+/** 剧情段落类型：旁白 / 地点标题 / 宝物名 / 宝物介绍 */
+type StoryKind = 'line' | 'place' | 'name' | 'desc';
+
+interface StorySeg {
+  kind: StoryKind;
+  text: string;
+}
+
+const STORY_CLASS: Record<StoryKind, string> = {
+  line: 'story-line',
+  place: 'story-place',
+  name: 'story-name',
+  desc: 'story-desc',
+};
+
+/** 普通字符与标点的打字间隔（s） */
+const STORY_CHAR_TIME = 0.026;
+const STORY_PUNCT_TIME = 0.14;
+
+/** 剧情播放状态 */
+let storyActive = false;
+let storyDone = false;
+/** 0 = 现状与操作引导，1 = 宝物介绍（独立一屏，从头播放） */
+let storyPage = 0;
+let storySegs: StorySeg[] = [];
+let storyIndex = 0;
+let storyChar = 0;
+let storyAcc = 0;
+let storyWait = 0;
+let storyCurrentEl: HTMLElement | null = null;
+
+/** 第一屏：面具碎裂的现状 + 操作与目标引导 */
+function buildNarrativeSegments(): StorySeg[] {
+  const lines = [
+    '昨夜子时，镇馆的纵目面具自己裂开了。灵韵散成十五道碎光，落进东莞六个地方。',
+    '我是从神树纹里醒来的昭，你是守藏灵瞳——去把它们带回来，别让「锈」先找到。',
+    '你刚醒，腿脚还生疏。用方向键或左摇杆移动瞳，靠近散落的碎光，按确认键把它们收回来。',
+    '每处地方藏着三件宝物。收齐三件，寻宝图上那个地方才会亮起来。',
+    '五处全部点亮后，东莞博物馆新馆的门会为你打开。昭会在那里等你，把宝物一并交给我。',
+  ];
+  return lines.map((text) => ({ kind: 'line', text }));
+}
+
+/** 第二屏：统一介绍这一路要找回的全部宝物（纯文字，居中，不放图片） */
+function buildTreasureSegments(): StorySeg[] {
+  const segs: StorySeg[] = [];
+  segs.push({
+    kind: 'line',
+    text: '出发前，先认一认这一路要找回的十五件碎光。它们不是战利品，是面具的一部分。',
+  });
+
+  const numerals = ['壹', '贰', '叁', '肆', '伍'];
+  getTreasureGuide().forEach((place, i) => {
+    segs.push({ kind: 'place', text: `${numerals[i] ?? ''} · ${place.place}` });
+    place.items.forEach((item) => {
+      segs.push({ kind: 'name', text: `【${item.name}】` });
+      segs.push({ kind: 'desc', text: item.desc });
+    });
+  });
+
+  segs.push({ kind: 'line', text: '都记住了吗？按确认键，踏上东莞寻宝图。' });
+  return segs;
+}
+
+/** 显示剧情提示：打字中可跳过；第一屏结束后查看宝物，第二屏结束后进入大地图 */
+function renderStoryHint(typing: boolean): void {
+  let label = '进入大地图';
+  if (typing) label = '跳过剧情';
+  else if (storyPage === 0) label = '查看宝物';
+  renderHint(document.getElementById('story-hint'), [{ keys: ['a'], label }]);
+}
+
+/** 开始指定剧情页：清空容器、从顶部重新播放文字流 */
+function startStoryPage(page: number): void {
+  storyPage = page;
+  storyDone = false;
+  storySegs = page === 0 ? buildNarrativeSegments() : buildTreasureSegments();
+  storyIndex = 0;
+  storyChar = 0;
+  storyAcc = 0;
+  storyWait = 0.22;
+  storyCurrentEl = null;
+  const box = document.getElementById('story-text');
+  if (box) {
+    box.replaceChildren();
+    box.scrollTop = 0;
+  }
+  renderStoryHint(true);
+}
+
+/** 从首页按钮进入文字流剧情 */
+function startStory(): void {
+  showScreen('start-screen', false);
+  showScreen('story-screen', true);
+  storyActive = true;
+  startStoryPage(0);
+}
+
+/** 立即补全当前剧情页文字（跳过打字）；第一屏结束后稍作停顿自动进入宝物页 */
+function finishStoryInstant(): void {
+  const box = document.getElementById('story-text');
+  if (box) {
+    const frag = document.createDocumentFragment();
+    for (const seg of storySegs) {
+      const el = document.createElement('div');
+      el.className = STORY_CLASS[seg.kind];
+      el.textContent = seg.text;
+      frag.appendChild(el);
+    }
+    box.replaceChildren(frag);
+    box.scrollTop = box.scrollHeight;
+  }
+  storyCurrentEl = null;
+  storyDone = true;
+  storySegs = [];
+  renderStoryHint(false);
+}
+
+/** 输出下一个字符；段落结束时插入短暂停顿 */
+function advanceStoryChar(): void {
+  if (storyIndex >= storySegs.length) {
+    finishStoryInstant();
+    return;
+  }
+  const seg = storySegs[storyIndex];
+  if (!storyCurrentEl) {
+    storyCurrentEl = document.createElement('div');
+    storyCurrentEl.className = STORY_CLASS[seg.kind];
+    document.getElementById('story-text')?.appendChild(storyCurrentEl);
+  }
+  storyChar += 1;
+  storyCurrentEl.textContent = seg.text.slice(0, storyChar);
+  const box = document.getElementById('story-text');
+  if (box) box.scrollTop = box.scrollHeight;
+
+  if (storyChar >= seg.text.length) {
+    storyIndex += 1;
+    storyChar = 0;
+    storyCurrentEl = null;
+    storyWait = seg.kind === 'line' ? 0.2 : seg.kind === 'place' ? 0.14 : 0.06;
+  }
+  if (storyIndex >= storySegs.length) finishStoryInstant();
+}
+
+/** 按 dt 推进打字机：标点处放慢，保证阅读节奏 */
+function updateStory(dt: number): void {
+  if (storyDone) return;
+  if (storyWait > 0) {
+    storyWait -= dt;
+    if (storyWait > 0) return;
+  }
+  storyAcc += dt;
+  let guard = 0;
+  while (!storyDone && storyAcc > 0 && guard < 400) {
+    guard += 1;
+    const seg = storySegs[storyIndex];
+    if (!seg) {
+      finishStoryInstant();
+      break;
+    }
+    const ch = storyChar < seg.text.length ? seg.text[storyChar] : '';
+    const cost = ch && '，。；：！？—…'.includes(ch) ? STORY_PUNCT_TIME : STORY_CHAR_TIME;
+    if (storyAcc < cost) break;
+    storyAcc -= cost;
+    advanceStoryChar();
+  }
+}
+
+/** 剧情结束：淡出剧情层并进入大地图 */
+function enterMapFromStory(): void {
+  storyActive = false;
+  showScreen('story-screen', false);
+  enterWorldMap();
+}
+
 /** 每帧同步输入来源（切换键帽键位文案）与键帽按压态 */
 function syncInputUi(): void {
   const source = getInputSource();
@@ -297,8 +476,23 @@ function resetProgress(): void {
   console.log('关卡进度已重置');
 }
 
-/** START：左右切换按钮，A 键确认（继续游戏 / 重置关卡） */
-function handleStart(): void {
+/** START：剧情播放中先输出文字流；结束后左右切换按钮，A 键确认（继续游戏 / 重置关卡） */
+function handleStart(dt: number): void {
+  if (storyActive) {
+    const confirm = isAButtonJustPressed();
+    if (storyDone) {
+      if (storyPage === 0) {
+        // 第一屏读完：按 A 换一屏，宝物介绍从头开始播放
+        if (confirm) startStoryPage(1);
+      } else if (confirm) {
+        enterMapFromStory();
+      }
+      return;
+    }
+    if (confirm) finishStoryInstant();
+    else updateStory(dt);
+    return;
+  }
   if (isLeftJustPressed() || isRightJustPressed()) {
     startSelection = (startSelection + 1) % 2;
     refreshStartSelection();
@@ -309,7 +503,7 @@ function handleStart(): void {
     resetProgress();
     return;
   }
-  enterWorldMap();
+  startStory();
 }
 
 /** WORLD_MAP：左右选择关卡（高亮跟随），A 键进入关卡，B 键返回首页 */
@@ -369,6 +563,7 @@ function enterLevel(): void {
 function handleLevel(dt: number): void {
   updateLevel(dt);
   drawLevel();
+  if (isCinematic()) return; // 终章合成动画期间屏蔽按键，避免跳过结算
   if (isLevelWon()) {
     if (winElapsed() > 1.5 && isAButtonJustPressed()) {
       exitLevelToMap();
@@ -419,7 +614,7 @@ function loop(): void {
   syncInputUi();
   switch (currentState) {
     case GameState.START:
-      handleStart();
+      handleStart(dt);
       break;
     case GameState.WORLD_MAP:
       handleWorldMap();

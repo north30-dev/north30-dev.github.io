@@ -4,11 +4,19 @@
  * - 按地标渲染 public/assets/bg-<id>.png 场景背景（onload 完成前绘制兜底底色与加载文案，防白屏）
  * - 主角使用 /assets/hero.png 横向 3 帧序列图（每帧 256x347），左摇杆（死区 0.2）/键盘移动
  * - 宝物按 TREASURE_CONFIG 配置在画面中上部随机生成，使用 public/assets/treasure-01..15.png 实体图绘制
- * - 碰撞收集（距离 < 50）：手柄震动 + 金色粒子 + 宝物文化描述对话框；集齐后弹出"寻宝成功！"
- * - 博物馆为终极合成场景：无收集品，进场播放完整青铜纵目面具复苏动画（暗屏/放大/粒子环/闪光/长震动）
+ * - 宝物拾取（距离 < 100 内出现提示，按 A 拾取）：手柄震动 + 金色粒子 + 宝物文化描述对话框；集齐后弹出"寻宝成功！"
+ * - 博物馆为终极场景：走到昭（太阳神鸟）身边按 A 打开宝物总览面板，
+ *   再按 A 一次性全部上交，随后按 A 触发完整青铜纵目面具复苏动画（暗屏/放大/粒子环/闪光/长震动）
  */
 
-import { axisX, axisY, getKeyboardAxes, getInputSource } from './InputManager';
+import {
+  axisX,
+  axisY,
+  getKeyboardAxes,
+  getInputSource,
+  isAButtonJustPressed,
+  isBButtonJustPressed,
+} from './InputManager';
 
 /** 关卡画布与 2D 上下文（module 脚本延迟执行，DOM 已就绪） */
 const canvas = document.getElementById('level-canvas') as HTMLCanvasElement;
@@ -41,6 +49,11 @@ const heroFrames = HERO_FRAME_DEFS.map((def) => {
 const heroIdleImg = new Image();
 heroIdleImg.src = '/assets/hero_idle.png';
 
+/** 昭（太阳神鸟）：guide.png 横向 3 帧悬停序列（每帧 256×302） */
+const GUIDE_FRAMES = 3;
+const guideImg = new Image();
+guideImg.src = '/assets/guide.png';
+
 /** 场景背景图缓存（懒加载，未加载完成前绘制兜底文案） */
 const bgCache = new Map<string, HTMLImageElement>();
 function getBg(id: string): HTMLImageElement {
@@ -55,8 +68,8 @@ function getBg(id: string): HTMLImageElement {
 
 /** 主角移动速度（px/s） */
 const SPEED = 420;
-/** 收集判定半径（px） */
-const COLLECT_RADIUS = 50;
+/** 收集判定半径（px）：走进范围后按 A 拾取 */
+const COLLECT_RADIUS = 100;
 
 /** 宝物静态定义：img 对应 public/assets 下的实体图文件名，文案取自 docs/宝物描述.md */
 interface TreasureDef {
@@ -91,6 +104,10 @@ maskImg.src = '/assets/mask-final.png';
 const MUSEUM_ID = 'museum';
 /** 合成动画时间轴（s）：暗屏 0→1.0，面具放大 1.0→3.4，3.4s 处闪光+最强震动 */
 const SYNTH_REVEAL = 3.4;
+/** 合成动画完整结束时刻（s）：结局字幕完全淡入后，才允许按 A 返回 */
+const SYNTH_END = SYNTH_REVEAL + 3.9;
+/** 向昭上交宝物的互动半径（px，按主角身体中心判定） */
+const OFFER_RADIUS = 140;
 
 /** 各地标的收集品配置（三星堆主题：5 关 × 3 件；博物馆为终极合成场景，无收集品） */
 const TREASURE_CONFIG: Record<string, TreasureDef[]> = {
@@ -151,10 +168,40 @@ const STORY_BY_LEVEL: Record<string, { song: string; note: string }> = {
     note: '在四十二层的玻璃上看见自己，头上像是已经戴着那顶冠。',
   },
   museum: {
-    song: '十七归位，面复其光',
+    song: '十五归位，面复其光',
     note: '最后一件回来时，展柜里的面具在响——不是碎，是呼吸。',
   },
 };
+
+/** 博物馆待上交宝物清单：五关各三件，共 15 件（按关卡推荐顺序） */
+const OFFER_LIST: TreasureDef[] = ['ssl', 'ky', 'humen', 'ns', 'gm'].flatMap(
+  (id) => TREASURE_CONFIG[id] ?? []
+);
+
+/** 剧情引子用的宝物导览（仅文字，按地点分组） */
+export interface TreasureGuidePlace {
+  place: string;
+  items: ReadonlyArray<{ name: string; desc: string }>;
+}
+
+/** 五处地点及其中宝物，供首页剧情文字流展示（不含图片） */
+export function getTreasureGuide(): TreasureGuidePlace[] {
+  const places: ReadonlyArray<{ id: string; place: string }> = [
+    { id: 'ssl', place: '松山湖' },
+    { id: 'ky', place: '可园' },
+    { id: 'humen', place: '虎门炮台' },
+    { id: 'ns', place: '南社古村' },
+    { id: 'gm', place: '东莞国贸' },
+  ];
+  return places.map(({ id, place }) => ({
+    place,
+    items: (TREASURE_CONFIG[id] ?? []).map(({ name, desc }) => ({ name, desc })),
+  }));
+}
+
+/** 博物馆开场台词（由昭开口，提示玩家走近并打开宝物面板） */
+const MUSEUM_INTRO =
+  '把一路找回的宝物都交给我。面具碎了，灵韵还在你身上——走近些，把宝物一并递过来。';
 
 /** 金色收集粒子 */
 interface Particle {
@@ -187,6 +234,21 @@ let dialog: { name: string; desc: string; timer: number } | null = null;
 /** 通关状态与通关时刻 */
 let won = false;
 let wonAt = 0;
+
+/** 博物馆流程阶段：献宝 → 待复原 → 合成动画 → 完成 */
+type MuseumPhase = 'offer' | 'ready' | 'synth' | 'done';
+let museumPhase: MuseumPhase = 'offer';
+/** 已上交宝物数量 */
+let offeredCount = 0;
+/** 宝物总览面板是否展开（展开时可再按 A 一次性提交全部宝物） */
+let offerPanelOpen = false;
+/** 合成动画已播放时长（s），与关卡全局时间解耦，交齐后才开始计时 */
+let synthTime = 0;
+/** 复苏闪光/最强震动是否已触发 */
+let blastDone = false;
+
+/** 当前可拾取的宝物位置（非空时显示 A 拾取提示） */
+let nearbyTreasure: { x: number; y: number } | null = null;
 
 /** 同步画布分辨率与 CSS 尺寸（进入关卡与窗口缩放时调用） */
 function resize(): void {
@@ -435,12 +497,22 @@ export function enterLevel(def: { id: string; name: string }): void {
   dialog = null;
   won = false;
   wonAt = 0;
+  museumPhase = 'offer';
+  offeredCount = 0;
+  offerPanelOpen = false;
+  synthTime = 0;
+  blastDone = false;
+  nearbyTreasure = null;
   treasures = spawnTreasures(def.id, w, h);
   totalCount = treasures.length;
+  if (def.id === MUSEUM_ID) {
+    // 博物馆开场：昭在场景中等待，由玩家走近打开宝物面板
+    dialog = { name: '昭', desc: MUSEUM_INTRO, timer: 6 };
+  }
   getBg(def.id); // 立即触发场景图加载
 }
 
-/** 每帧更新：移动、碰撞收集、粒子与对话框计时、通关判定 */
+/** 每帧更新：移动、宝物拾取、粒子与对话框计时、通关判定 */
 export function updateLevel(dt: number): void {
   worldTime += dt;
   const w = canvas.width;
@@ -465,13 +537,24 @@ export function updateLevel(dt: number): void {
     animTime += dt;
   }
 
-  // —— 碰撞收集（以主角身体中心点判定）——
+  // —— 宝物交互：扩大判定范围，靠近后按 A 拾取（以主角身体中心点判定）——
   const pcx = player.x;
   const pcy = player.y - (h * 0.24) / 2;
-  for (let i = treasures.length - 1; i >= 0; i -= 1) {
-    const t = treasures[i];
-    if (Math.hypot(pcx - t.x, pcy - t.y) < COLLECT_RADIUS) {
-      collect(i);
+  nearbyTreasure = null;
+  if (currentId !== MUSEUM_ID && !won && treasures.length > 0) {
+    const confirm = isAButtonJustPressed();
+    let bestDist = COLLECT_RADIUS;
+    let bestIndex = -1;
+    treasures.forEach((t, i) => {
+      const d = Math.hypot(pcx - t.x, pcy - t.y);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIndex = i;
+      }
+    });
+    if (bestIndex >= 0) {
+      nearbyTreasure = { x: treasures[bestIndex].x, y: treasures[bestIndex].y };
+      if (confirm) collect(bestIndex);
     }
   }
 
@@ -494,17 +577,94 @@ export function updateLevel(dt: number): void {
     if (dialog.timer <= 0) dialog = null;
   }
 
-  // —— 通关判定：普通关收集齐即胜；博物馆在面具完全显现时刻触发复苏 ——
+  // —— 通关判定：普通关收集齐即胜；博物馆需交齐宝物并看完合成动画 ——
   if (currentId === MUSEUM_ID) {
-    if (!won && worldTime >= SYNTH_REVEAL) {
-      won = true;
-      wonAt = worldTime;
-      vibrateBlast();
-    }
+    updateMuseum(dt, pcx, pcy);
   } else if (!won && totalCount > 0 && treasures.length === 0) {
     won = true;
     wonAt = worldTime;
   }
+}
+
+/** 昭在博物馆内的悬停位置（画面坐标，按画布尺寸自适应） */
+function museumBirdPos(w: number, h: number): { x: number; y: number } {
+  return { x: w * 0.72, y: h * 0.36 };
+}
+
+/**
+ * 博物馆流程：
+ * 献宝阶段——主角走近昭、按 A 打开宝物总览面板，再按 A 一次性全部上交；
+ * 待复原——全部上交后，再按 A 启动面具合成动画；
+ * 合成阶段——按时间轴播放终章，结束后判定通关（此时才允许按 A 返回地图）。
+ */
+function updateMuseum(dt: number, pcx: number, pcy: number): void {
+  const { x, y } = museumBirdPos(canvas.width, canvas.height);
+  const near = Math.hypot(pcx - x, pcy - y) < OFFER_RADIUS;
+
+  if (museumPhase !== 'done' && museumPhase !== 'synth') {
+    if (offerPanelOpen) {
+      // 面板展开：A 提交全部宝物，B 收起面板（弹窗内自行消费按键，避免误退出关卡）
+      if (isBButtonJustPressed()) {
+        offerPanelOpen = false;
+      } else if (isAButtonJustPressed()) {
+        offerAll(x, y);
+        offerPanelOpen = false;
+      }
+    } else {
+      const confirm = isAButtonJustPressed();
+      if (confirm && near) {
+        if (museumPhase === 'offer') {
+          offerPanelOpen = true;
+          dialog = null;
+        } else if (museumPhase === 'ready') {
+          museumPhase = 'synth';
+          synthTime = 0;
+          dialog = null;
+        }
+      }
+    }
+  }
+
+  if (museumPhase === 'synth') {
+    // 动画播放期间吞掉按键边沿，避免这些按键在结算后误触发返回
+    isAButtonJustPressed();
+    isBButtonJustPressed();
+    synthTime += dt;
+    if (!blastDone && synthTime >= SYNTH_REVEAL) {
+      blastDone = true;
+      vibrateBlast();
+    }
+    if (synthTime >= SYNTH_END) {
+      museumPhase = 'done';
+      won = true;
+      wonAt = worldTime;
+    }
+  }
+}
+
+/** 一次性上交全部宝物：金色粒子涌向昭 + 短震 + 切换为博物馆歌谣与手记 */
+function offerAll(bx: number, by: number): void {
+  offeredCount = OFFER_LIST.length;
+  museumPhase = 'ready';
+  vibrateCollect();
+  for (let i = 0; i < 48; i += 1) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 40 + Math.random() * 190;
+    particles.push({
+      x: bx,
+      y: by,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - 40,
+      life: 0.6 + Math.random() * 0.8,
+    });
+  }
+  const story = STORY_BY_LEVEL.museum;
+  dialog = { name: story.song, desc: `${story.note} 靠近昭，按确认键让面具复原。`, timer: 6 };
+}
+
+/** 终章合成动画是否正在播放（期间屏蔽退出键，避免跳过结算） */
+export function isCinematic(): boolean {
+  return currentId === MUSEUM_ID && museumPhase === 'synth';
 }
 
 /** 是否已收集全部宝物 */
@@ -613,10 +773,26 @@ function drawDialog(): void {
   ctx.restore();
 }
 
-/** HUD：左上角收集进度铜牌 + 右上角返回键帽提示 */
+/** HUD：左上角进度铜牌 + 右上角返回键帽提示 + 博物馆献宝交互提示 */
 function drawHud(): void {
   const w = canvas.width;
-  if (totalCount > 0) {
+  const h = canvas.height;
+  const museumOffering = currentId === MUSEUM_ID && (museumPhase === 'offer' || museumPhase === 'ready');
+
+  if (museumOffering) {
+    const text =
+      museumPhase === 'offer'
+        ? `待上交宝物  ${OFFER_LIST.length} 件`
+        : `已上交宝物  ${offeredCount} / ${OFFER_LIST.length}`;
+    drawPlaque(ctx, 20, 18, 230, 42);
+    ctx.save();
+    ctx.font = `bold 19px ${FONT}`;
+    ctx.fillStyle = C.gold;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 36, 40);
+    ctx.restore();
+  } else if (totalCount > 0) {
     const text = `收集进度  ${totalCount - treasures.length} / ${totalCount}`;
     drawPlaque(ctx, 20, 18, 210, 42);
     ctx.save();
@@ -627,7 +803,103 @@ function drawHud(): void {
     ctx.fillText(text, 36, 40);
     ctx.restore();
   }
-  drawHintRow(ctx, [{ key: inputLabel('B', 'Esc'), label: '返回地图' }], w - 24, 40, 'right');
+
+  // 合成动画与宝物面板期间不展示右上返回提示（面板内有自己的键帽提示）
+  if (!offerPanelOpen && (currentId !== MUSEUM_ID || museumPhase === 'offer' || museumPhase === 'ready')) {
+    drawHintRow(ctx, [{ key: inputLabel('B', 'Esc'), label: '返回地图' }], w - 24, 40, 'right');
+  }
+
+  // 走近昭时的交互提示：放在对话框上方，加底牌保证文字清晰、不被宝物介绍框遮挡
+  if (museumOffering && !offerPanelOpen) {
+    const { x, y } = museumBirdPos(w, h);
+    const near = Math.hypot(player.x - x, player.y - (h * 0.24) / 2 - y) < OFFER_RADIUS;
+    if (near) {
+      const label = museumPhase === 'offer' ? '查看宝物' : '复原面具';
+      ctx.save();
+      ctx.font = `15px ${FONT}`;
+      const keySize = 34;
+      const keyGap = 8;
+      const rowW = keySize + keyGap + ctx.measureText(label).width;
+      const boxW = rowW + 36;
+      const boxY = h * 0.64 - 26;
+      drawPlaque(ctx, w / 2 - boxW / 2, boxY, boxW, 52, 0.92);
+      drawHintRow(ctx, [{ key: inputLabel('A', '空格'), label }], w / 2, h * 0.64, 'center');
+      ctx.restore();
+    }
+  }
+}
+
+/**
+ * 宝物总览面板：走近昭按 A 展开，5×3 网格展示全部待上交宝物，
+ * 再按 A 一次性提交，B 收起面板。
+ */
+function drawOfferPanel(): void {
+  const w = canvas.width;
+  const h = canvas.height;
+  const pw = Math.min(860, w * 0.88);
+  const px = (w - pw) / 2;
+  const cols = 5;
+  const rows = Math.ceil(OFFER_LIST.length / cols);
+  const cellW = (pw - 48) / cols;
+  const cellH = 104;
+  const ph = 76 + rows * cellH + 56;
+  const py = (h - ph) / 2;
+
+  // 暗化场景，聚焦面板
+  ctx.save();
+  ctx.fillStyle = 'rgba(2, 6, 18, 0.66)';
+  ctx.fillRect(0, 0, w, h);
+  drawPlaque(ctx, px, py, pw, ph);
+
+  // 标题与副标题
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = C.goldHi;
+  ctx.font = `bold 24px ${FONT}`;
+  ctx.fillText('寻回的宝物', w / 2, py + 38);
+  ctx.fillStyle = 'rgba(234, 220, 192, 0.8)';
+  ctx.font = `14px ${FONT}`;
+  ctx.fillText(`共 ${OFFER_LIST.length} 件 · 确认后由昭代为护持`, w / 2, py + 64);
+
+  // 5×3 宝物格子
+  OFFER_LIST.forEach((def, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cx = px + 24 + cellW * (col + 0.5);
+    const top = py + 76 + row * cellH;
+    const img = TREASURE_IMGS[def.img];
+    const iconH = 46;
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(227, 178, 75, 0.18)';
+    ctx.lineWidth = 1;
+    roundRectPath(ctx, cx - cellW / 2 + 6, top + 2, cellW - 12, cellH - 8, 6);
+    ctx.stroke();
+    ctx.restore();
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      const iconW = (iconH * img.naturalWidth) / img.naturalHeight;
+      ctx.drawImage(img, cx - iconW / 2, top + 24, iconW, iconH);
+    }
+
+    ctx.fillStyle = C.ivory;
+    ctx.font = `14px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(def.name, cx, top + 88);
+  });
+
+  // 底部按键提示
+  drawHintRow(
+    ctx,
+    [
+      { key: inputLabel('A', '空格'), label: '全部提交' },
+      { key: inputLabel('B', 'Esc'), label: '收起' },
+    ],
+    w / 2,
+    py + ph - 28,
+    'center'
+  );
+  ctx.textAlign = 'left';
 }
 
 /** easeOutBack 缓动（带轻微过冲，让面具"弹出"感更强） */
@@ -638,6 +910,48 @@ function easeOutBack(x: number): number {
 }
 
 /**
+ * 昭（太阳神鸟）绘制：3 帧悬停扇翅 + 上下浮动 + 地面金色光晕，头顶标注名字。
+ * 位置与献宝判定点一致（museumBirdPos），保证"看到的就是能交宝的对象"。
+ */
+function drawMuseumBird(): void {
+  const w = canvas.width;
+  const h = canvas.height;
+  const { x, y } = museumBirdPos(w, h);
+  const cy = y + Math.sin(worldTime * 2) * 8;
+  const pulse = 0.6 + 0.4 * Math.sin(worldTime * 3);
+
+  // 地面金色光晕
+  ctx.save();
+  ctx.globalAlpha = 0.22 + 0.16 * pulse;
+  ctx.fillStyle = C.gold;
+  ctx.beginPath();
+  ctx.ellipse(x, y + h * 0.075, 32 + 6 * pulse, 8 + 2 * pulse, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  if (guideImg.complete && guideImg.naturalWidth > 0) {
+    const fw = guideImg.naturalWidth / GUIDE_FRAMES;
+    const fh = guideImg.naturalHeight;
+    const dh = h * 0.2;
+    const dw = (dh * fw) / fh;
+    const frame = Math.floor(worldTime / 0.22) % GUIDE_FRAMES;
+    ctx.save();
+    ctx.shadowColor = 'rgba(227, 178, 75, 0.55)';
+    ctx.shadowBlur = 22;
+    ctx.drawImage(guideImg, frame * fw, 0, fw, fh, x - dw / 2, cy - dh, dw, dh);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = C.gold;
+  ctx.font = `bold 17px ${FONT}`;
+  ctx.fillText('昭', x, cy - h * 0.2 - 12);
+  ctx.restore();
+}
+
+/**
  * 博物馆终极合成动画：
  * 0→1.0s 屏幕变暗 → 1.0→3.4s 完整青铜纵目面具由小放大（金/青双色粒子环绕旋转）
  * → 3.4s 中心闪光 + 2000ms 最强震动 → 随后"镇馆之宝"文案与按 A 返回提示。
@@ -645,7 +959,7 @@ function easeOutBack(x: number): number {
 function drawSynthesis(): void {
   const w = canvas.width;
   const h = canvas.height;
-  const t = worldTime;
+  const t = synthTime; // 交齐宝物后开始计时，与关卡全局时间解耦
   const cx = w / 2;
   const cy = h * 0.44;
 
@@ -737,7 +1051,7 @@ function drawSynthesis(): void {
     }
   }
 
-  // 5. 复苏文案：主行 + 「十七道碎光归位」，结局字幕淡入时同步淡出
+  // 5. 复苏文案：主行 + 「十五道碎光归位」，结局字幕淡入时同步淡出
   const endAlpha = clamp((t - SYNTH_REVEAL - 3.0) / 0.8, 0, 1);
   if (t >= SYNTH_REVEAL + 0.2 && endAlpha < 1) {
     ctx.save();
@@ -752,7 +1066,7 @@ function drawSynthesis(): void {
     ctx.shadowBlur = 0;
     ctx.fillStyle = C.gold;
     ctx.font = `${Math.floor(h * 0.0275)}px ${FONT}`;
-    ctx.fillText('十七道碎光归位，特展如期开幕。', cx, h * 0.845);
+    ctx.fillText('十五道碎光归位，特展如期开幕。', cx, h * 0.845);
     ctx.restore();
   }
 
@@ -877,10 +1191,27 @@ export function drawLevel(): void {
   }
   ctx.globalAlpha = 1;
 
-  // 博物馆：终极合成场景（暗屏 + 面具复苏动画覆盖在场景与主角之上）
+  // 靠近宝物时在宝物上方显示「A 拾取宝物」提示（带底牌，避免被背景干扰）
+  if (!won && nearbyTreasure) {
+    const label = '拾取宝物';
+    ctx.save();
+    ctx.font = `15px ${FONT}`;
+    const rowW = 34 + 8 + ctx.measureText(label).width;
+    const boxW = rowW + 36;
+    const cx = Math.min(w - boxW / 2 - 12, Math.max(boxW / 2 + 12, nearbyTreasure.x));
+    const cy = Math.max(52, nearbyTreasure.y - 92);
+    drawPlaque(ctx, cx - boxW / 2, cy - 26, boxW, 52, 0.92);
+    drawHintRow(ctx, [{ key: inputLabel('A', '空格'), label }], cx, cy, 'center');
+    ctx.restore();
+  }
+
+  // 博物馆：昭悬停在场景中；交齐宝物后才播放终极合成动画
   if (currentId === MUSEUM_ID) {
-    drawSynthesis();
+    drawMuseumBird();
+    if (museumPhase === 'synth' || museumPhase === 'done') drawSynthesis();
     drawHud();
+    if (dialog) drawDialog();
+    if (offerPanelOpen) drawOfferPanel();
     return;
   }
 
