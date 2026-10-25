@@ -1,14 +1,45 @@
+/* ===== 字体（本地打包，构建期自托管，仅下载命中的 unicode-range 分片） ===== */
+@import "lxgw-wenkai-webfont/lxgwwenkai-regular.css";
+@import "lxgw-wenkai-webfont/lxgwwenkai-bold.css";
+
+/* ===== 设计 token：金黄青铜器 / 博物馆展柜 ===== */
+:root {
+  /* 金 */
+  --gold: #e3b24b;
+  --gold-hi: #f8e3a6;
+  --gold-dim: #8a5f1f;
+  --gold-deep: #6b4a18;
+  /* 青铜 */
+  --patina: #4a7a66;
+  --patina-dim: #283c34;
+  /* 底 */
+  --lacquer: #16100b;
+  --case-bg: #0b0907;
+  --ivory: #eadcc0;
+  /* 语义 */
+  --cinnabar: #8c3327;
+  /* 字体 */
+  --font-ui: "LXGW WenKai", "KaiTi", "STKaiti", "Microsoft YaHei", serif;
+  /* 发光（仅标题 / 选中 / 结算） */
+  --glow-gold: 0 0 18px rgba(227, 178, 75, 0.45);
+  /* 回纹边（零图片，SVG data-URI） */
+  --pattern-hui: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='12' viewBox='0 0 24 12'%3E%3Cpath d='M1 10h5V3h6v7h5M17 10h5V2' fill='none' stroke='%23E3B24B' stroke-width='1' opacity='.7'/%3E%3C/svg%3E");
+  /* 铜锈噪点 */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+}
+
 /* ===== 全局 ===== */
 body {
   margin: 0;
-  background: #0b132b;
+  background: var(--lacquer);
+  color: var(--ivory);
   overflow: hidden;
-  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-family: var(--font-ui);
 }
 
-/* ===== START 首页容器 ===== */
-/* 注意：此处不声明 opacity，避免 ID 特异度压过 .hidden 的 opacity:0 导致渐隐失效 */
-#start-screen {
+/* ===== 通用屏幕层 ===== */
+/* 注意：.screen 不声明 opacity，且必须位于 .hidden 之前（同特异度时后者覆盖），避免渐隐失效 */
+.screen {
   position: fixed;
   inset: 0;
   transition: opacity 0.6s ease;
@@ -19,72 +50,489 @@ body {
   pointer-events: none;
 }
 
-/* ===== 游戏标题 ===== */
-.game-title {
+/* ===== 组件：全屏铜锈噪点 ===== */
+.screen-grain {
   position: absolute;
-  top: 8%;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--grain);
+  background-size: 140px 140px;
+  opacity: 0.16;
+}
+
+/* ===== 组件：展柜面板 .bronze-panel ===== */
+.bronze-panel {
+  position: relative;
+  background:
+    radial-gradient(circle at 14px 14px, var(--gold-dim) 0 2px, transparent 2.6px),
+    radial-gradient(circle at calc(100% - 14px) 14px, var(--gold-dim) 0 2px, transparent 2.6px),
+    radial-gradient(circle at 14px calc(100% - 14px), var(--gold-dim) 0 2px, transparent 2.6px),
+    radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), var(--gold-dim) 0 2px, transparent 2.6px),
+    linear-gradient(180deg, rgba(227, 178, 75, 0.07), transparent 42%),
+    var(--case-bg);
+  border: 1px solid var(--gold-dim);
+  border-radius: 3px;
+  box-shadow:
+    inset 0 0 0 1px rgba(227, 178, 75, 0.16),
+    inset 0 0 24px rgba(0, 0, 0, 0.8),
+    0 10px 28px rgba(0, 0, 0, 0.5);
+  padding: 18px 22px;
+}
+
+/* 顶边回纹装条 */
+.bronze-panel::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 12px;
+  right: 12px;
+  height: 6px;
+  background-image: var(--pattern-hui);
+  background-repeat: repeat-x;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.bronze-panel--compact {
+  padding: 12px 16px;
+}
+
+.bronze-panel--flush {
+  padding: 0;
+}
+
+/* ===== 组件：铭牌按钮 .bronze-btn ===== */
+.bronze-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 150px;
+  padding: 12px 32px;
+  overflow: hidden;
+  color: var(--ivory);
+  font-family: var(--font-ui);
+  font-size: 20px;
+  letter-spacing: 4px;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #3a2a16 0%, #241809 55%, #170f08 100%);
+  border: 1px solid var(--gold-dim);
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(248, 227, 166, 0.18),
+    0 4px 0 var(--gold-deep),
+    0 8px 18px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    transform 0.14s ease,
+    box-shadow 0.14s ease,
+    color 0.18s ease,
+    background 0.18s ease;
+}
+
+.bronze-btn.selected {
+  color: #2a1b08;
+  background: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold) 48%, #b08030 100%);
+  border-color: #c79a46;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 4px 0 #7c561c,
+    var(--glow-gold);
+  transform: translateY(-1px) scale(1.03);
+}
+
+/* 选中金箔扫光 */
+.bronze-btn.selected::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  left: 0;
+  width: 42%;
+  height: 160%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: sweep 1.9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-18deg);
+  }
+}
+
+.bronze-btn.is-pressed {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.55),
+    0 1px 0 var(--gold-deep);
+}
+
+/* ===== 组件：实体键帽 .keycap ===== */
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  color: #2a1b08;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  background: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold) 55%, #a97b2b 100%);
+  border: 1px solid var(--gold-dim);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 3px 0 var(--gold-deep),
+    0 6px 10px rgba(0, 0, 0, 0.55);
+  user-select: none;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+/* 键盘键位文案（默认）；手柄模式改读 data-pad */
+.keycap::before {
+  content: attr(data-kb);
+}
+
+body[data-input="pad"] .keycap::before {
+  content: attr(data-pad);
+}
+
+body[data-input="pad"] .keycap {
+  border-radius: 50%;
+}
+
+.keycap--a,
+.keycap--b {
+  border-radius: 7px;
+}
+
+.keycap--dpad,
+.keycap--sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  font-size: 13px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 2px 0 var(--gold-deep),
+    0 4px 7px rgba(0, 0, 0, 0.5);
+}
+
+body[data-input="pad"] .keycap--dpad,
+body[data-input="pad"] .keycap--sm {
+  border-radius: 4px;
+}
+
+.keycap--wide {
+  width: 64px;
+}
+
+.keycap.is-pressed {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.45),
+    0 1px 0 var(--gold-deep);
+}
+
+.keycap--dpad.is-pressed,
+.keycap--sm.is-pressed {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.4),
+    0 0 0 var(--gold-deep);
+}
+
+/* ===== 组件：简牍提示条 .hint-bar ===== */
+.hint-bar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 22px;
+  background: rgba(11, 9, 7, 0.78);
+  border-top: 1px solid var(--gold-dim);
+  border-bottom: 1px solid var(--gold-dim);
+  color: var(--ivory);
+  font-size: 15px;
+  letter-spacing: 1px;
+  user-select: none;
+}
+
+/* 左右轴头 */
+.hint-bar::before,
+.hint-bar::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 6px rgba(227, 178, 75, 0.6);
+  transform: translateY(-50%);
+}
+
+.hint-bar::before {
+  left: -4px;
+}
+
+.hint-bar::after {
+  right: -4px;
+}
+
+.hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.hint-label {
+  color: rgba(234, 220, 192, 0.82);
+}
+
+.hint-text {
+  color: var(--gold);
+  letter-spacing: 1px;
+}
+
+/* ===== 组件：印章 .seal（完成「藏」/ 锁定「封」） ===== */
+.seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--cinnabar);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(140, 51, 39, 0.12);
+  border: 2px solid var(--cinnabar);
+  border-radius: 4px;
+  transform: rotate(-8deg);
+  user-select: none;
+}
+
+/* ===== 组件：地图四角框饰 ===== */
+.frame-corner {
+  position: absolute;
+  width: clamp(28px, 4.2vw, 52px);
+  height: clamp(28px, 4.2vw, 52px);
+  border-top: 2px solid rgba(227, 178, 75, 0.45);
+  border-left: 2px solid rgba(227, 178, 75, 0.45);
+  pointer-events: none;
+}
+
+.frame-corner::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+  border-top: 1px solid rgba(227, 178, 75, 0.22);
+  border-left: 1px solid rgba(227, 178, 75, 0.22);
+}
+
+.frame-corner--tl {
+  left: -6px;
+  top: -6px;
+}
+
+.frame-corner--tr {
+  right: -6px;
+  top: -6px;
+  transform: rotate(90deg);
+}
+
+.frame-corner--br {
+  right: -6px;
+  bottom: -6px;
+  transform: rotate(180deg);
+}
+
+.frame-corner--bl {
+  left: -6px;
+  bottom: -6px;
+  transform: rotate(270deg);
+}
+
+/* ===== 首页 ===== */
+#start-screen {
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(227, 178, 75, 0.13) 0%, transparent 58%),
+    radial-gradient(ellipse at 50% 112%, rgba(74, 122, 102, 0.12) 0%, transparent 62%),
+    var(--lacquer);
+}
+
+#start-screen > * {
+  position: absolute;
+  z-index: 1;
+}
+
+/* 噪点层保持在内容之下（覆盖 ID 选择器带来的 z-index:1） */
+#start-screen > .screen-grain,
+#world-map-screen > .screen-grain {
+  z-index: 0;
+}
+
+/* 东莞地图暗纹（铜版刻线感） */
+#start-screen::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: min(58vw, 78vh);
+  aspect-ratio: 1760 / 1472;
+  transform: translate(-50%, -50%);
+  background: url("/assets/map.png") no-repeat center / contain;
+  filter: grayscale(1) sepia(0.6) brightness(0.5);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+/* ===== 顶部标题框：金线圆弧 + 纵目面具图腾 ===== */
+.title-wrap {
+  position: absolute;
+  top: 7%;
   left: 50%;
   transform: translateX(-50%);
-  font-size: clamp(48px, 8vw, 88px);
-  color: #00e5ff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 2;
+}
+
+/* 标题两侧纵目面具图腾（复用现有面具素材） */
+.title-wrap::before,
+.title-wrap::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 82px;
+  height: 100px;
+  background: url("/assets/mask-final.png") no-repeat center / contain;
+  filter: sepia(1) saturate(2.4) hue-rotate(357deg) brightness(0.9);
+  opacity: 0.26;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.title-wrap::before {
+  left: -118px;
+}
+
+.title-wrap::after {
+  right: -118px;
+  transform: translateY(-50%) scaleX(-1);
+}
+
+.title-arc {
+  width: clamp(300px, 38vw, 460px);
+  height: clamp(44px, 5.6vw, 66px);
+  border: 2px solid var(--gold-dim);
+  box-shadow: inset 0 0 14px rgba(227, 178, 75, 0.12);
+}
+
+.title-arc.arc-top {
+  border-bottom: none;
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  margin-bottom: -8px;
+}
+
+.title-arc.arc-bottom {
+  border-top: none;
+  border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  margin-top: -8px;
+}
+
+/* ===== 游戏标题 ===== */
+.game-title {
+  position: relative;
+  margin: 10px 0;
+  font-size: clamp(52px, 8.5vw, 96px);
+  font-weight: 700;
+  letter-spacing: 10px;
+  text-indent: 10px; /* 抵消末字多余字距，保持视觉居中 */
+  color: var(--gold);
   text-shadow:
-    0 0 12px #00e5ff,
-    0 0 32px rgba(0, 229, 255, 0.6);
-  animation: breathe 2.4s ease-in-out infinite;
+    0 0 12px rgba(227, 178, 75, 0.5),
+    0 0 36px rgba(227, 178, 75, 0.26);
+  animation: breathe 3.2s ease-in-out infinite;
   user-select: none;
+}
+
+/* 标题两侧对称金线 */
+.game-title::before,
+.game-title::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: clamp(90px, 14vw, 190px);
+  height: 2px;
+}
+
+.game-title::before {
+  right: calc(100% + 26px);
+  background: linear-gradient(90deg, rgba(138, 95, 31, 0), var(--gold-dim) 55%, var(--gold) 100%);
+}
+
+.game-title::after {
+  left: calc(100% + 26px);
+  background: linear-gradient(270deg, rgba(138, 95, 31, 0), var(--gold-dim) 55%, var(--gold) 100%);
 }
 
 @keyframes breathe {
   0%,
   100% {
-    transform: translateX(-50%) scale(1);
     opacity: 1;
     text-shadow:
-      0 0 12px #00e5ff,
-      0 0 32px rgba(0, 229, 255, 0.6);
+      0 0 12px rgba(227, 178, 75, 0.5),
+      0 0 36px rgba(227, 178, 75, 0.26);
   }
   50% {
-    transform: translateX(-50%) scale(1.04);
-    opacity: 0.92;
+    opacity: 0.93;
     text-shadow:
-      0 0 18px #00e5ff,
-      0 0 48px rgba(0, 229, 255, 0.8);
+      0 0 16px rgba(227, 178, 75, 0.62),
+      0 0 48px rgba(227, 178, 75, 0.34);
   }
 }
 
-/* ===== 主角（左下角，真实 3 帧序列帧，单元 256x347，源自 抠图素材/主角色_01-03） ===== */
+/* ===== 主角（左下角，正面单张立绘，静态无待机动画） ===== */
 .hero {
   position: absolute;
-  left: 6%;
+  left: 5%;
   bottom: 0;
-  width: 120px;
-  height: 163px;
-  background-image: url("/assets/hero.png");
+  width: 150px;
+  height: 203px;
+  background-image: url("/assets/hero_idle.png");
   background-repeat: no-repeat;
-  background-size: 360px 163px;
-  background-position: 0 0;
-  animation: hero-anim 0.9s steps(3) infinite;
+  background-size: contain;
+  background-position: center bottom;
 }
 
-@keyframes hero-anim {
-  from {
-    background-position: 0 0;
-  }
-  to {
-    background-position: -360px 0;
-  }
-}
-
-/* ===== 副角色（右下偏中，真实 3 帧序列帧，单元 285x336，源自 抠图素材/副角色_01-03） ===== */
+/* ===== 副角色（右侧中部，真实 3 帧序列帧，单元 285x336） ===== */
 .guide {
   position: absolute;
-  right: 22%;
-  bottom: 0;
-  width: 120px;
-  height: 141px;
+  right: 10%;
+  bottom: 21%;
+  width: 150px;
+  height: 177px;
   background-image: url("/assets/guide.png");
   background-repeat: no-repeat;
-  background-size: 360px 141px;
+  background-size: 450px 177px;
   background-position: 0 0;
   animation: guide-anim 1s steps(3) infinite;
 }
@@ -94,77 +542,366 @@ body {
     background-position: 0 0;
   }
   to {
-    background-position: -360px 0;
+    background-position: -450px 0;
   }
 }
 
-/* ===== 角色椭圆阴影 ===== */
-.hero::after,
-.guide::after {
+/* ===== 主角椭圆阴影 ===== */
+.hero::after {
   content: "";
   position: absolute;
   left: 50%;
   bottom: -6px;
-  width: 80px;
-  height: 12px;
+  width: 100px;
+  height: 14px;
   transform: translateX(-50%);
   background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 70%);
   border-radius: 50%;
   z-index: -1;
 }
 
-/* ===== 对话框（毛玻璃） ===== */
+/* ===== 副角色脚下的传送门光环（金） ===== */
+.guide::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -30px;
+  width: 190px;
+  height: 44px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  border: 2px solid rgba(227, 178, 75, 0.8);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(227, 178, 75, 0.34) 0%,
+    rgba(227, 178, 75, 0.08) 46%,
+    transparent 68%
+  );
+  box-shadow:
+    0 0 18px rgba(227, 178, 75, 0.6),
+    inset 0 0 18px rgba(227, 178, 75, 0.4);
+  animation: portal-pulse 2s ease-in-out infinite;
+  z-index: -1;
+}
+
+@keyframes portal-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 14px rgba(227, 178, 75, 0.45),
+      inset 0 0 14px rgba(227, 178, 75, 0.3);
+    opacity: 0.9;
+  }
+  50% {
+    box-shadow:
+      0 0 28px rgba(227, 178, 75, 0.8),
+      inset 0 0 22px rgba(227, 178, 75, 0.5);
+    opacity: 1;
+  }
+}
+
+/* ===== 对话框（展柜铜牌，位于副角色左侧） ===== */
 .dialog-box {
   position: absolute;
-  right: 6%;
-  bottom: 180px;
-  max-width: 380px;
-  padding: 18px 24px;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(0, 229, 255, 0.35);
-  border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  color: #eaf6ff;
-  line-height: 1.7;
+  right: 26%;
+  bottom: 30%;
+  max-width: 340px;
+  padding: 16px 22px;
+  color: var(--ivory);
+  line-height: 1.75;
   font-size: 16px;
 }
 
-/* 对话框指向副角色的三角箭头 */
+/* 对话框指向右侧副角色的铜色三角箭头 */
 .dialog-box::after {
   content: "";
   position: absolute;
-  bottom: -10px;
-  right: 24px;
+  right: -9px;
+  top: 50%;
   width: 16px;
   height: 16px;
-  background: inherit;
-  border-right: 1px solid rgba(0, 229, 255, 0.35);
-  border-bottom: 1px solid rgba(0, 229, 255, 0.35);
-  transform: rotate(45deg);
-  border-radius: 0 0 3px 0;
+  background: var(--case-bg);
+  border-right: 1px solid var(--gold-dim);
+  border-top: 1px solid var(--gold-dim);
+  transform: translateY(-50%) rotate(45deg);
 }
 
-/* ===== 底部开始提示 ===== */
+/* ===== 首页按钮容器 ===== */
+.start-actions {
+  position: absolute;
+  bottom: 15%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 32px;
+  user-select: none;
+}
+
+/* ===== 底部简牍提示 ===== */
 .start-hint {
   position: absolute;
   bottom: 6%;
   left: 50%;
   transform: translateX(-50%);
-  color: #ffffff;
-  font-size: 20px;
-  letter-spacing: 2px;
-  animation: blink 1.2s ease-in-out infinite;
+  color: var(--ivory);
   user-select: none;
 }
 
-@keyframes blink {
+/* ===== 大地图：选择关卡 ===== */
+#world-map-screen {
+  background:
+    radial-gradient(ellipse at 50% 50%, rgba(227, 178, 75, 0.1) 0%, transparent 62%),
+    radial-gradient(ellipse at 50% 118%, rgba(74, 122, 102, 0.12) 0%, transparent 60%),
+    var(--lacquer);
+  user-select: none;
+}
+
+.map-title {
+  position: absolute;
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--gold);
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 700;
+  letter-spacing: 8px;
+  text-indent: 8px;
+  text-shadow:
+    0 0 12px rgba(227, 178, 75, 0.45),
+    0 0 30px rgba(227, 178, 75, 0.2);
+}
+
+.map-area {
+  position: absolute;
+  top: 52%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* 地图原图 1760 x 1472 */
+  width: min(86vw, 100vh);
+  aspect-ratio: 1760 / 1472;
+  /* 容器查询：节点内尺寸全部用 cqw（地图宽度的百分比），随地图等比缩放 */
+  container-type: inline-size;
+}
+
+.map-bg {
+  position: absolute;
+  inset: 0;
+  background: url("/assets/map.png") no-repeat center / contain;
+  filter: sepia(0.35) brightness(0.96) drop-shadow(0 0 24px rgba(227, 178, 75, 0.16));
+}
+
+/* 关卡节点：绝对定位于地图之上（坐标由内联 style 提供百分比，随地图等比缩放） */
+.level-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4cqw;
+}
+
+.level-icon {
+  position: relative;
+  width: 11.5cqw;
+  aspect-ratio: 1;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.45));
+  transition:
+    transform 0.18s ease,
+    filter 0.18s ease;
+}
+
+/* 终极关卡：图标更大 */
+.level-node.major .level-icon {
+  width: 15.5cqw;
+}
+
+/* 名称 / 副标题（两行标签） */
+.level-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2cqw;
+}
+
+.level-name {
+  font-size: 1.7cqw;
+  font-weight: 600;
+  letter-spacing: 0.2cqw;
+  color: var(--ivory);
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.85),
+    0 0 10px rgba(0, 0, 0, 0.5);
+  transition: all 0.18s ease;
+}
+
+.level-sub {
+  font-size: 1.3cqw;
+  letter-spacing: 0.1cqw;
+  color: rgba(234, 220, 192, 0.72);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  transition: all 0.18s ease;
+}
+
+/* 未选中节点稍微退后 */
+.level-node:not(.selected) .level-icon {
+  opacity: 0.82;
+}
+
+/* ===== 锁定（终极关卡未解锁）：灰化 + 封泥印 ===== */
+.level-node.locked .level-icon {
+  filter: grayscale(1) brightness(0.62) drop-shadow(0 6px 8px rgba(0, 0, 0, 0.45));
+}
+
+/* 封泥印挂在节点层，避免被 .level-icon 的 grayscale 滤镜压暗 */
+.level-node.locked::after {
+  content: "封";
+  position: absolute;
+  top: 9.6cqw;
+  right: -1.2cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6cqw;
+  height: 2.6cqw;
+  color: var(--cinnabar);
+  font-size: 1.5cqw;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(140, 51, 39, 0.14);
+  border: 0.14cqw solid var(--cinnabar);
+  border-radius: 0.3cqw;
+  transform: rotate(-8deg);
+  pointer-events: none;
+}
+
+.level-node.locked .level-name,
+.level-node.locked .level-sub {
+  color: rgba(234, 220, 192, 0.45);
+}
+
+/* ===== 已完成：朱砂「藏」印 ===== */
+.level-node .seal {
+  position: absolute;
+  top: -0.6cqw;
+  right: -1.2cqw;
+  width: 2.6cqw;
+  height: 2.6cqw;
+  font-size: 1.5cqw;
+  border-width: 0.14cqw;
+  border-radius: 0.3cqw;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.level-node.completed .seal {
+  opacity: 1;
+}
+
+/* ===== 选中高亮：图标放大发光 + 名牌点亮 + 顶部弹跳指示 ===== */
+.level-node.selected .level-icon {
+  opacity: 1;
+  transform: translateY(-0.55cqw) scale(1.18);
+  filter: drop-shadow(0 0 8px var(--gold)) drop-shadow(0 0 22px rgba(227, 178, 75, 0.55));
+}
+
+/* 选中的锁定节点：保持灰化但保留选中光环 */
+.level-node.selected.locked .level-icon {
+  filter: grayscale(1) brightness(0.62) drop-shadow(0 0 8px var(--gold));
+}
+
+.level-node.selected .level-name {
+  color: var(--gold);
+  text-shadow:
+    0 0 10px rgba(227, 178, 75, 0.8),
+    0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+.level-node.selected .level-sub {
+  color: rgba(227, 178, 75, 0.85);
+}
+
+.level-node.selected::before {
+  content: "▼";
+  position: absolute;
+  top: -1.8cqw;
+  left: 50%;
+  color: var(--gold);
+  font-size: 1.5cqw;
+  text-shadow: 0 0 8px rgba(227, 178, 75, 0.8);
+  animation: marker-bounce 0.9s ease-in-out infinite;
+}
+
+@keyframes marker-bounce {
   0%,
   100% {
-    opacity: 1;
+    transform: translate(-50%, 0);
   }
   50% {
-    opacity: 0.15;
+    transform: translate(-50%, -0.55cqw);
+  }
+}
+
+/* 选中锁定关卡却按 A：抖动拒绝 */
+.level-node.denied {
+  animation: deny-shake 0.35s ease;
+}
+
+@keyframes deny-shake {
+  0%,
+  100% {
+    transform: translate(-50%, -50%);
+  }
+  25% {
+    transform: translate(calc(-50% - 0.55cqw), -50%);
+  }
+  75% {
+    transform: translate(calc(-50% + 0.55cqw), -50%);
+  }
+}
+
+.map-hint {
+  position: absolute;
+  bottom: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* ===== 关卡内（Canvas 游戏场景） ===== */
+#level-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: var(--lacquer); /* 场景图 onload 前的兜底底色，防白屏 */
+}
+
+/* ===== 减少动态效果 ===== */
+@media (prefers-reduced-motion: reduce) {
+  .bronze-btn.selected::after,
+  .game-title,
+  .guide::after,
+  .level-node.selected::before,
+  .hero,
+  .guide {
+    animation: none !important;
+  }
+
+  .bronze-btn,
+  .keycap,
+  .level-icon {
+    transition: none;
+  }
+}
+
+/* 窄屏：收起标题两侧图腾，避免与角色重叠 */
+@media (max-width: 900px) {
+  .title-wrap::before,
+  .title-wrap::after {
+    display: none;
   }
 }
